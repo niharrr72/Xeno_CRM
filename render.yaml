@@ -18,10 +18,6 @@ services:
     buildCommand: npm install && cd ../aura-frontend && npm install && npm run build && cd ../aura-backend && node scripts/copy-frontend.js
     startCommand: node server.js
     envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: aura-db
-          property: connectionString
       - key: CHANNEL_SERVICE_URL
         fromService:
           type: web
@@ -38,7 +34,3 @@ services:
         sync: false
       - key: NODE_ENV
         value: production
-
-databases:
-  - name: aura-db
-    plan: free
