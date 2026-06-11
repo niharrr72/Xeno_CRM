@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: aura-backend
+    env: node
+    buildCommand: npm install && cd ../aura-frontend && npm install && npm run build && cd ../aura-backend && node scripts/copy-frontend.js
+    startCommand: node server.js
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CHANNEL_SERVICE_URL
+        sync: false
+      - key: CRM_BASE_URL
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production

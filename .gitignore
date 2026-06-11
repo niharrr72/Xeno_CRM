@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment files
+.env
+*/.env
+!.env.example
+!*/.env.example
+
+# Local databases and runtime state
+.aura-pglite/
+*/.aura-pglite/
+.pglite-test/
+*/.pglite-test/
+*.db
+*.sqlite
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output
+dist/
+*/dist/
+
+# Keep backend public source-controlled only if you intentionally want
+# backend-only deployment with prebuilt frontend assets.
+# For normal deployment, rebuild frontend during deploy instead.
+aura-backend/public/assets/
+aura-backend/public/index.html
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
