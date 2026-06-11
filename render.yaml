@@ -1,0 +1,44 @@
+services:
+  # 1. Stateless Channel Service
+  - type: web
+    name: aura-channel
+    env: node
+    rootDir: aura-channel
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: INTERNAL_API_KEY
+        value: local-demo-key
+
+  # 2. Main CRM Backend & Statically Served Frontend
+  - type: web
+    name: aura-backend
+    env: node
+    rootDir: aura-backend
+    buildCommand: npm install && cd ../aura-frontend && npm install && npm run build && cd ../aura-backend && node scripts/copy-frontend.js
+    startCommand: node server.js
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aura-db
+          property: connectionString
+      - key: CHANNEL_SERVICE_URL
+        fromService:
+          type: web
+          name: aura-channel
+          property: host
+      - key: CRM_BASE_URL
+        fromService:
+          type: web
+          name: aura-backend
+          property: host
+      - key: INTERNAL_API_KEY
+        value: local-demo-key
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
+
+databases:
+  - name: aura-db
+    plan: free
