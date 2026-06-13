@@ -57,8 +57,8 @@ npm start
 
 Fill these after Render deployment:
 
-- Backend/frontend: `https://...`
-- Channel: `https://...`
+- Backend/frontend: `https://aura-backend-t8ni.onrender.com`
+- Channel: `(Deployed as a separate private/public service on Render)`
 
 ## Render Deployment
 
