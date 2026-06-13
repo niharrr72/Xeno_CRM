@@ -1,5 +1,7 @@
 # Aura CRM
 
+**Live Application URL**: [https://aura-backend-t8ni.onrender.com](https://aura-backend-t8ni.onrender.com)
+
 Aura CRM is an AI-native mini CRM for a D2C fashion brand, Noir & Thread. It includes a Node/Express backend, PostgreSQL schema and seed data, a separate stubbed channel service, and a React/Vite frontend.
 
 ## Architecture
