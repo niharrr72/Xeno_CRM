@@ -15,7 +15,7 @@ services:
     name: aura-backend
     env: node
     rootDir: aura-backend
-    buildCommand: npm install && cd ../aura-frontend && npm install && npm run build && cd ../aura-backend && node scripts/copy-frontend.js
+    buildCommand: npm install && cd ../aura-frontend && npm install --include=dev && npm run build && cd ../aura-backend && node scripts/copy-frontend.js
     startCommand: node server.js
     envVars:
       - key: CHANNEL_SERVICE_URL
