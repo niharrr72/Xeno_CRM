@@ -1,6 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
-
-export const systemPrompt = `You are Aura, an intelligent marketing assistant embedded in Aura CRM - a tool for direct-to-consumer brands to reach their shoppers.
+const systemPrompt = `You are Aura, an intelligent marketing assistant embedded in Aura CRM - a tool for direct-to-consumer brands to reach their shoppers.
 
 You help marketers create segments, draft personalised campaign messages, launch campaigns, analyse campaign performance, and answer questions about their customer base.
 
@@ -13,26 +11,66 @@ Use action blocks when useful:
 Be concise and action-oriented. Translate audience intent into segment rules immediately. Always confirm before launching a campaign. Suggest WhatsApp for high-value, SMS for broad reach, and Email for detailed content.`;
 
 export async function streamClaude(messages, onText) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    const fallback = 'I can help you build this campaign once ANTHROPIC_API_KEY is configured. For now, try creating a segment from the Segments page.';
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    const fallback =
+      'I can help you build this campaign once GEMINI_API_KEY is configured. For now, try creating a segment from the Segments page.';
     await onText(fallback);
     return fallback;
   }
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  let full = '';
-  const stream = await client.messages.stream({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 1200,
-    system: systemPrompt,
-    messages: messages.map((message) => ({ role: message.role, content: message.content }))
+  // Build Gemini contents array (user/model turns)
+  const contents = messages.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }]
+  }));
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents,
+      generationConfig: { maxOutputTokens: 1200, temperature: 0.7 }
+    })
   });
 
-  for await (const event of stream) {
-    if (event.type === 'content_block_delta' && event.delta?.text) {
-      full += event.delta.text;
-      await onText(event.delta.text);
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Gemini API error ${response.status}: ${errText}`);
+  }
+
+  let full = '';
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value, { stream: true });
+    const lines = chunk.split('\n');
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr || jsonStr === '[DONE]') continue;
+
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          full += text;
+          await onText(text);
+        }
+      } catch {
+        // skip malformed chunks
+      }
     }
   }
+
   return full;
 }

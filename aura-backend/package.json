@@ -10,7 +10,7 @@
     "build:frontend": "cd ../aura-frontend && npm run build && node ../aura-backend/scripts/copy-frontend.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.55.0",
+
     "@electric-sql/pglite": "^0.5.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
