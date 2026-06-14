@@ -44,24 +44,30 @@ export async function launchCampaign(campaignId) {
   if (!channelUrl) throw new ApiError(500, 'CHANNEL_SERVICE_URL is not configured', 'CHANNEL_URL_MISSING');
   const callbackUrl = `${process.env.CRM_BASE_URL || `http://localhost:${process.env.PORT || 3000}`}/api/receipts/callback`;
 
-  for (let i = 0; i < payloadRows.length; i += 50) {
-    const batch = payloadRows.slice(i, i + 50);
-    const response = await fetch(`${channelUrl}/send`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.INTERNAL_API_KEY || ''
-      },
-      body: JSON.stringify({ communications: batch, callback_url: callbackUrl })
-    });
-    if (!response.ok) throw new ApiError(502, 'Channel service rejected campaign batch', 'CHANNEL_SEND_FAILED');
-    const ids = batch.map((item) => item.id);
-    await pool.query(
-      `UPDATE communications SET status = 'sent', sent_at = NOW() WHERE id = ANY($1::uuid[])`,
-      [ids]
-    );
-    await pool.query('UPDATE campaigns SET sent_count = sent_count + $2 WHERE id = $1', [campaignId, ids.length]);
-  }
+  try {
+    for (let i = 0; i < payloadRows.length; i += 50) {
+      const batch = payloadRows.slice(i, i + 50);
+      const response = await fetch(`${channelUrl}/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.INTERNAL_API_KEY || ''
+        },
+        body: JSON.stringify({ communications: batch, callback_url: callbackUrl })
+      });
+      if (!response.ok) throw new ApiError(502, 'Channel service rejected campaign batch', 'CHANNEL_SEND_FAILED');
+      const ids = batch.map((item) => item.id);
+      await pool.query(
+        `UPDATE communications SET status = 'sent', sent_at = NOW() WHERE id = ANY($1::uuid[])`,
+        [ids]
+      );
+      await pool.query('UPDATE campaigns SET sent_count = sent_count + $2 WHERE id = $1', [campaignId, ids.length]);
+    }
 
-  await pool.query(`UPDATE campaigns SET status = 'completed', completed_at = NOW() WHERE id = $1`, [campaignId]);
+    await pool.query(`UPDATE campaigns SET status = 'completed', completed_at = NOW() WHERE id = $1`, [campaignId]);
+  } catch (error) {
+    await pool.query(`UPDATE campaigns SET status = 'failed' WHERE id = $1`, [campaignId]);
+    await pool.query(`UPDATE communications SET status = 'failed' WHERE campaign_id = $1 AND status = 'queued'`, [campaignId]);
+    throw error;
+  }
 }
