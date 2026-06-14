@@ -11,55 +11,42 @@ Use action blocks when useful:
 Be concise and action-oriented. Translate audience intent into segment rules immediately. Always confirm before launching a campaign. Suggest WhatsApp for high-value, SMS for broad reach, and Email for detailed content.`;
 
 export async function streamClaude(messages, onText) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
 
   if (!apiKey) {
     const fallback =
-      'I can help you build this campaign once GEMINI_API_KEY is configured. For now, try creating a segment from the Segments page.';
+      'I can help you build this campaign once GROQ_API_KEY is configured. For now, try creating a segment from the Segments page.';
     await onText(fallback);
     return fallback;
   }
 
-  // Build Gemini contents array — prepend system prompt as first user turn
-  const contents = [
-    { role: 'user', parts: [{ text: systemPrompt }] },
-    { role: 'model', parts: [{ text: 'Understood. I am Aura, ready to help.' }] },
-    ...messages.map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }]
-    }))
-  ];
-
-  // Use the simple (non-streaming) generateContent endpoint — reliable across all environments
-  // Try gemini-2.0-flash first, fallback to gemini-1.5-flash-latest
-  const models = ['gemini-2.0-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash'];
-  let response = null;
-  let lastErrText = '';
-
-  for (const model of models) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-    response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents,
-        generationConfig: { maxOutputTokens: 1200, temperature: 0.7 }
-      })
-    });
-    if (response.ok) break;
-    lastErrText = await response.text();
-    console.error(`Gemini model ${model} error ${response.status}:`, lastErrText);
-  }
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      max_tokens: 1200,
+      temperature: 0.7,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...messages.map((m) => ({ role: m.role, content: m.content }))
+      ]
+    })
+  });
 
   if (!response.ok) {
-    console.error('All Gemini models failed. Last error:', lastErrText);
-    const errMsg = `Sorry, I encountered an error (${response.status}): ${lastErrText.slice(0, 200)}`;
+    const errText = await response.text();
+    console.error('Groq API error:', response.status, errText);
+    const errMsg = `Sorry, I encountered an error (${response.status}). Please try again.`;
     await onText(errMsg);
     return errMsg;
   }
 
   const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  const text = data?.choices?.[0]?.message?.content ?? '';
 
   if (!text) {
     const fallback = 'I received an empty response. Please try rephrasing your question.';
@@ -74,7 +61,6 @@ export async function streamClaude(messages, onText) {
     const chunk = (i === 0 ? '' : ' ') + words[i];
     full += chunk;
     await onText(chunk);
-    // small delay for streaming feel
     await new Promise((r) => setTimeout(r, 15));
   }
 
