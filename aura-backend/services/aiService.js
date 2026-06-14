@@ -20,19 +20,23 @@ export async function streamClaude(messages, onText) {
     return fallback;
   }
 
-  // Build Gemini contents array (user/model turns)
-  const contents = messages.map((m) => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }]
-  }));
+  // Build Gemini contents array — prepend system prompt as first user turn
+  const contents = [
+    { role: 'user', parts: [{ text: systemPrompt }] },
+    { role: 'model', parts: [{ text: 'Understood. I am Aura, ready to help.' }] },
+    ...messages.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }))
+  ];
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`;
+  // Use the simple (non-streaming) generateContent endpoint — reliable across all environments
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
       contents,
       generationConfig: { maxOutputTokens: 1200, temperature: 0.7 }
     })
@@ -40,36 +44,30 @@ export async function streamClaude(messages, onText) {
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`Gemini API error ${response.status}: ${errText}`);
+    console.error('Gemini API error:', errText);
+    const errMsg = `Sorry, I encountered an error (${response.status}). Please try again.`;
+    await onText(errMsg);
+    return errMsg;
   }
 
+  const data = await response.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+
+  if (!text) {
+    const fallback = 'I received an empty response. Please try rephrasing your question.';
+    await onText(fallback);
+    return fallback;
+  }
+
+  // Stream text word-by-word for a nice typing effect
+  const words = text.split(' ');
   let full = '';
-  const decoder = new TextDecoder();
-  const reader = response.body.getReader();
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    const chunk = decoder.decode(value, { stream: true });
-    const lines = chunk.split('\n');
-
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const jsonStr = line.slice(6).trim();
-      if (!jsonStr || jsonStr === '[DONE]') continue;
-
-      try {
-        const parsed = JSON.parse(jsonStr);
-        const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          full += text;
-          await onText(text);
-        }
-      } catch {
-        // skip malformed chunks
-      }
-    }
+  for (let i = 0; i < words.length; i++) {
+    const chunk = (i === 0 ? '' : ' ') + words[i];
+    full += chunk;
+    await onText(chunk);
+    // small delay for streaming feel
+    await new Promise((r) => setTimeout(r, 15));
   }
 
   return full;
