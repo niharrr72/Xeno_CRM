@@ -31,21 +31,29 @@ export async function streamClaude(messages, onText) {
   ];
 
   // Use the simple (non-streaming) generateContent endpoint — reliable across all environments
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  // Try gemini-2.0-flash first, fallback to gemini-1.5-flash-latest
+  const models = ['gemini-2.0-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash'];
+  let response = null;
+  let lastErrText = '';
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents,
-      generationConfig: { maxOutputTokens: 1200, temperature: 0.7 }
-    })
-  });
+  for (const model of models) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents,
+        generationConfig: { maxOutputTokens: 1200, temperature: 0.7 }
+      })
+    });
+    if (response.ok) break;
+    lastErrText = await response.text();
+    console.error(`Gemini model ${model} error ${response.status}:`, lastErrText);
+  }
 
   if (!response.ok) {
-    const errText = await response.text();
-    console.error('Gemini API error:', errText);
-    const errMsg = `Sorry, I encountered an error (${response.status}). Please try again.`;
+    console.error('All Gemini models failed. Last error:', lastErrText);
+    const errMsg = `Sorry, I encountered an error (${response.status}): ${lastErrText.slice(0, 200)}`;
     await onText(errMsg);
     return errMsg;
   }
