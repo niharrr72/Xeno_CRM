@@ -25,29 +25,35 @@ export default function AiAssistant() {
     setInput('');
     setBusy(true);
     let finalText = '';
-
-    const response = await fetch(`${API_BASE}/api/ai/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [...messages, userMessage], context: { actions } })
-    });
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value);
-      for (const line of chunk.split('\n')) {
-        if (!line.startsWith('data: ')) continue;
-        const event = JSON.parse(line.slice(6));
-        if (event.type === 'delta') {
-          finalText += event.text;
-          updateLastAssistant(event.text);
+    try {
+      const response = await fetch(`${API_BASE}/api/ai/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [...messages, userMessage], context: { actions } })
+      });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        for (const line of chunk.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === 'delta') {
+              finalText += event.text;
+              updateLastAssistant(event.text);
+            }
+          } catch { /* skip malformed SSE lines */ }
         }
       }
+      await executeActions(finalText, setActions);
+    } catch (err) {
+      console.error('Chat error:', err);
+    } finally {
+      setBusy(false);
     }
-    await executeActions(finalText, setActions);
-    setBusy(false);
   };
 
   return (
@@ -85,7 +91,7 @@ export default function AiAssistant() {
             </div>
             <div className="flex gap-2">
               <textarea className="input min-h-[48px] flex-1 resize-none" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') send();
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
               }} />
               <button className="btn btn-primary px-4" onClick={() => send()} disabled={busy}><Send size={16} /></button>
             </div>
@@ -103,18 +109,22 @@ function stripActions(text) {
 async function executeActions(text, setActions) {
   const matches = [...text.matchAll(/<action>([\s\S]*?)<\/action>/g)];
   for (const match of matches) {
-    const action = JSON.parse(match[1]);
-    if (action.type === 'CREATE_SEGMENT') {
-      const segment = await api.post('/api/segments', { ...action.payload, created_by: 'ai' }).then(unwrap);
-      setActions((prev) => [...prev, { type: 'SEGMENT_CREATED', data: segment }]);
-    }
-    if (action.type === 'CREATE_CAMPAIGN') {
-      const campaign = await api.post('/api/campaigns', action.payload).then(unwrap);
-      setActions((prev) => [...prev, { type: 'CAMPAIGN_CREATED', data: campaign }]);
-    }
-    if (action.type === 'LAUNCH_CAMPAIGN') {
-      const campaign = await api.post(`/api/campaigns/${action.payload.campaign_id}/launch`).then(unwrap);
-      setActions((prev) => [...prev, { type: 'CAMPAIGN_LAUNCHED', data: campaign }]);
+    try {
+      const action = JSON.parse(match[1]);
+      if (action.type === 'CREATE_SEGMENT') {
+        const segment = await api.post('/api/segments', { ...action.payload, created_by: 'ai' }).then(unwrap);
+        setActions((prev) => [...prev, { type: 'SEGMENT_CREATED', data: segment }]);
+      }
+      if (action.type === 'CREATE_CAMPAIGN') {
+        const campaign = await api.post('/api/campaigns', action.payload).then(unwrap);
+        setActions((prev) => [...prev, { type: 'CAMPAIGN_CREATED', data: campaign }]);
+      }
+      if (action.type === 'LAUNCH_CAMPAIGN') {
+        const campaign = await api.post(`/api/campaigns/${action.payload.campaign_id}/launch`).then(unwrap);
+        setActions((prev) => [...prev, { type: 'CAMPAIGN_LAUNCHED', data: campaign }]);
+      }
+    } catch (err) {
+      console.error('Action execution error:', err);
     }
   }
 }
